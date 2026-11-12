@@ -1,44 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Fallback priority list if dynamic model fetch fails
-const DEFAULT_MODELS = [
-  "gemini-3.8-flash",
-  "gemini-3.8-flash-lite",
-  "gemini-3-flash",
-  "gemini-3.8-pro",
-];
-
-async function getAvailableModels(apiKey: string): Promise<string[]> {
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
-      { cache: "no-store" }
-    );
-    if (!res.ok) return DEFAULT_MODELS;
-    const data = await res.json();
-    if (!data.models || !Array.isArray(data.models)) return DEFAULT_MODELS;
-
-    const available = data.models
-      .filter((m: any) =>
-        m.supportedGenerationMethods?.includes("generateContent")
-      )
-      .map((m: any) => m.name.replace(/^models\//, ""))
-      .filter((name: string) => name.includes("gemini"));
-
-    // Prioritize 3.8 and flash models
-    const sorted = available.sort((a: string, b: string) => {
-      const aScore = (a.includes("3.8") ? 10 : 0) + (a.includes("flash") ? 5 : 0);
-      const bScore = (b.includes("3.8") ? 10 : 0) + (b.includes("flash") ? 5 : 0);
-      return bScore - aScore;
-    });
-
-    return sorted.length > 0 ? sorted : DEFAULT_MODELS;
-  } catch {
-    return DEFAULT_MODELS;
-  }
-}
-
 async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -65,7 +27,7 @@ export async function POST(req: NextRequest) {
         {
           error: "MISSING_API_KEY",
           message:
-            "A Gemini API Key is required to extract code from screenshots. Click Settings to enter your free key from Google AI Studio.",
+            "A free Gemini API Key is required. Click Settings to enter your free key from Google AI Studio (1,500 free requests/day).",
         },
         { status: 401 }
       );
@@ -86,36 +48,60 @@ export async function POST(req: NextRequest) {
     const genAI = new GoogleGenerativeAI(apiKey);
 
     const systemPrompt = `You are CodeLens, an elite computer vision programming OCR and code reconstruction engine.
-Analyze the provided image which contains source code (this might be a direct screenshot, or a photo taken of a laptop/monitor screen from a phone camera).
+Analyze the provided image which contains source code (this might be a screenshot, or a camera photo of a monitor/laptop screen).
 
 CRITICAL EXTRACTION RULES:
-1. Strip out line numbers at the start of lines! (Example: if the screen shows "1 chmod 777" or "  1  def foo():", extract "chmod 777" or "def foo():" WITHOUT the line number).
-2. Clean up OCR glitches:
-   - Handle phone photo artifacts: glare, moiré pattern, reflections, perspective skew, browser tabs, or window headers. Focus only on the code editor/terminal area.
-   - Preserve exact indentations (spaces/tabs). This is critical for Python, YAML, etc.
-   - Preserve standard quotes (" or ') instead of slanted/curly quotes.
-   - Preserve all brackets, braces, colons, and semicolons.
-3. Detect the programming language accurately:
-   - "python", "cpp", "c", "bash", "javascript", "typescript", "java", "go", "rust", "ruby", "php", "swift", "kotlin".
-4. Provide a concise 3-5 word title for what the code accomplishes.
+1. FOCUS ONLY ON THE CODE:
+   - Completely ignore browser tabs, URLs, window titlebars, photographer watermarks, camera ISO stamps, or screen glare.
+   - Strip out any line numbers at the start of lines (e.g. "1 chmod 777" -> "chmod 777").
+2. ACCURACY:
+   - Output exact executable code.
+   - Preserve exact spaces, tabs, indentation, braces, and quotes.
+3. DETECT LANGUAGE:
+   - Identify: "bash", "python", "cpp", "c", "javascript", "typescript", "java", "go", "rust", "ruby", "php", "swift", "kotlin".
 
-Return ONLY a valid JSON object matching this schema without any markdown backticks:
+Return ONLY a valid JSON object matching this schema without any markdown ticks:
 {
-  "code": "the exact extracted clean code without line numbers",
-  "language": "one of: python | cpp | c | bash | javascript | typescript | java | go | rust | ruby | php | swift | kotlin",
-  "title": "short descriptive title",
-  "notes": "brief summary of what was extracted"
+  "code": "the exact extracted clean code without line numbers or non-code noise",
+  "language": "one of: bash | python | cpp | c | javascript | typescript | java | go | rust | ruby | php | swift | kotlin",
+  "title": "short descriptive title"
 }`;
 
-    // Get live available models for this specific API key
-    const modelsToTry = await getAvailableModels(apiKey);
+    // Query active models for this key
+    let modelsToTry = ["gemini-3.8-flash", "gemini-3.8-pro", "gemini-3-flash", "gemini-2.5-pro"];
+    try {
+      const modelListRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+      );
+      if (modelListRes.ok) {
+        const data = await modelListRes.json();
+        if (data.models && Array.isArray(data.models)) {
+          const valid = data.models
+            .filter((m: any) => m.supportedGenerationMethods?.includes("generateContent"))
+            .map((m: any) => m.name.replace(/^models\//, ""))
+            .filter((name: string) => name.includes("gemini"));
+          if (valid.length > 0) {
+            // Prioritize 3.8 and flash
+            modelsToTry = valid.sort((a: string, b: string) => {
+              const aScore = (a.includes("3.8") ? 10 : 0) + (a.includes("flash") ? 5 : 0);
+              const bScore = (b.includes("3.8") ? 10 : 0) + (b.includes("flash") ? 5 : 0);
+              return bScore - aScore;
+            });
+          }
+        }
+      }
+    } catch {
+      // Use default priority list
+    }
+
+    console.log("CodeLens Vision: Attempting models:", modelsToTry.slice(0, 4));
+
     let responseText = "";
     let lastError: Error | null = null;
 
-    // Loop through available models
+    // Try available models with retries for 503 high-demand spikes
     for (const modelName of modelsToTry.slice(0, 4)) {
-      // Allow up to 2 attempts per model for temporary 503 high-demand errors
-      for (let attempt = 0; attempt < 2; attempt++) {
+      for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           const model = genAI.getGenerativeModel({ model: modelName });
           const result = await model.generateContent([
@@ -129,16 +115,24 @@ Return ONLY a valid JSON object matching this schema without any markdown backti
           ]);
           const res = await result.response;
           responseText = res.text();
-          if (responseText) break;
+          if (responseText) {
+            console.log(`CodeLens Vision: Succeeded with model ${modelName} on attempt ${attempt}`);
+            break;
+          }
         } catch (err: unknown) {
           lastError = err instanceof Error ? err : new Error(String(err));
-          const isOverloaded = lastError.message.includes("503") || lastError.message.includes("high demand") || lastError.message.includes("429");
-          if (isOverloaded && attempt === 0) {
-            // Wait 1.2s before retry
-            await sleep(1200);
+          const isBusy =
+            lastError.message.includes("503") ||
+            lastError.message.includes("high demand") ||
+            lastError.message.includes("429");
+
+          if (isBusy && attempt < 3) {
+            console.log(`Model ${modelName} returned 503 (high demand). Retrying in 1.5s (attempt ${attempt}/3)...`);
+            await sleep(1500);
             continue;
           }
-          break; // Try next model in list
+          console.warn(`Model ${modelName} failed (attempt ${attempt}):`, lastError.message);
+          break; // move to next model
         }
       }
       if (responseText) break;
@@ -150,12 +144,12 @@ Return ONLY a valid JSON object matching this schema without any markdown backti
         return NextResponse.json(
           {
             error:
-              "Google Gemini servers are temporarily experiencing high demand (503). Please click Retry or try again in a few moments.",
+              "Google Gemini servers are temporarily busy (503). Please click Retry in 2-3 seconds.",
           },
           { status: 503 }
         );
       }
-      throw lastError || new Error("Failed to extract code using available Gemini models.");
+      throw lastError || new Error("Failed to extract code using Gemini Vision.");
     }
 
     // Clean JSON response (strip markdown fences if present)
@@ -185,14 +179,12 @@ Return ONLY a valid JSON object matching this schema without any markdown backti
         code: extractedCode,
         language: (parsed.language || "python").toLowerCase().trim(),
         title: parsed.title || "Extracted Code",
-        notes: parsed.notes || "Code successfully extracted and cleaned.",
       });
     } catch {
       return NextResponse.json({
         code: responseText,
         language: "python",
         title: "Extracted Code",
-        notes: "Raw extracted code.",
       });
     }
   } catch (err: unknown) {

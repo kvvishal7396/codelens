@@ -12,7 +12,6 @@ import {
   RotateCw,
   CheckCircle2,
   AlertTriangle,
-  Cpu,
 } from "lucide-react";
 import { SAMPLE_SNIPPETS } from "@/lib/samples";
 import { SampleSnippet } from "@/types";
@@ -26,8 +25,6 @@ interface DropzoneProps {
   onClearImage: () => void;
   onRetryExtraction?: () => void;
   lastExtractedTitle?: string;
-  ocrEngine: "universal" | "gemini";
-  onToggleEngine: (engine: "universal" | "gemini") => void;
 }
 
 export function Dropzone({
@@ -39,8 +36,6 @@ export function Dropzone({
   onClearImage,
   onRetryExtraction,
   lastExtractedTitle,
-  ocrEngine,
-  onToggleEngine,
 }: DropzoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -108,39 +103,7 @@ export function Dropzone({
 
       <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
         {/* Drop / Paste Area or Image Preview Badge */}
-        <div className="w-full lg:w-auto flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          {/* Mode Switcher Pill */}
-          <div className="flex items-center p-1 rounded-2xl bg-[#121624] border border-white/10 flex-shrink-0">
-            <button
-              onClick={() => onToggleEngine("universal")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-                ocrEngine === "universal"
-                  ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-600/30"
-                  : "text-gray-400 hover:text-white"
-              }`}
-              title="100% Free Client-Side OCR. Zero API Keys, Zero Tokens, Unlimited use for everyone."
-            >
-              <Cpu className="w-3.5 h-3.5" />
-              <span>Universal Free OCR</span>
-              <span className="text-[9px] px-1 py-0.2 rounded bg-black/30 font-normal">
-                0 Tokens
-              </span>
-            </button>
-
-            <button
-              onClick={() => onToggleEngine("gemini")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-                ocrEngine === "gemini"
-                  ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30"
-                  : "text-gray-400 hover:text-white"
-              }`}
-              title="Deep Gemini Vision AI Extraction (Uses free Google AI Studio key)"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-purple-300" />
-              <span>Gemini AI Mode</span>
-            </button>
-          </div>
-
+        <div className="w-full lg:w-auto flex-1 flex items-center gap-3">
           {selectedImage ? (
             <div className="relative flex-1 flex items-center justify-between gap-3 p-2.5 rounded-2xl bg-gradient-to-r from-[#131828] to-[#161c2e] border border-indigo-500/40 shadow-lg shadow-indigo-500/5">
               <div className="flex items-center gap-3 min-w-0">
@@ -164,35 +127,33 @@ export function Dropzone({
                 <div className="min-w-0 pr-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-gray-100 truncate">
-                      {lastExtractedTitle || "Screenshot Attached"}
+                      {lastExtractedTitle || "Screenshot Loaded"}
                     </span>
                     {extractStatus === "scanning" && (
                       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-500/20 text-[10px] text-indigo-300 font-semibold border border-indigo-500/30">
                         <Loader2 className="w-3 h-3 animate-spin text-indigo-400" />
-                        {ocrEngine === "universal" ? "Extracting locally..." : "Scanning with Gemini..."}
+                        AI Vision Reconstructing Code...
                       </span>
                     )}
                     {extractStatus === "success" && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-[10px] text-emerald-300 font-semibold border border-emerald-500/30">
                         <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                        Loaded in Editor
+                        Clean Code Loaded Below
                       </span>
                     )}
                     {extractStatus === "error" && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/20 text-[10px] text-rose-300 font-semibold border border-rose-500/30">
                         <AlertTriangle className="w-3 h-3 text-rose-400" />
-                        Extraction Failed
+                        Server Busy (Click Retry)
                       </span>
                     )}
                   </div>
                   <p className="text-[11px] text-gray-400 truncate mt-0.5">
                     {extractStatus === "success"
-                      ? "Code loaded into editor • Edit and click Run"
+                      ? "Clean syntax reconstructed • Ready to edit and run"
                       : extractStatus === "error"
-                      ? "Click Retry to scan again"
-                      : ocrEngine === "universal"
-                      ? "Universal Free OCR engine active (Zero token cost)"
-                      : "Gemini Vision AI active"}
+                      ? "Google AI was temporarily busy • Click the Retry button"
+                      : "Gemini Vision AI analyzing code pixels & removing screen glare..."}
                   </p>
                 </div>
               </div>
@@ -202,7 +163,7 @@ export function Dropzone({
                   <button
                     onClick={onRetryExtraction}
                     title="Retry Extraction"
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold transition"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-md shadow-indigo-600/30"
                   >
                     <RotateCw className="w-3 h-3" /> Retry
                   </button>
@@ -246,16 +207,16 @@ export function Dropzone({
                 </div>
                 <div>
                   <span className="font-bold text-gray-200 group-hover:text-white transition">
-                    Paste screenshot anywhere (⌘V / Ctrl+V)
+                    Paste code screenshot (⌘V / Ctrl+V)
                   </span>{" "}
                   <span className="hidden xl:inline text-gray-500 font-normal">
-                    • 100% Free & Unlimited for all visitors
+                    or drag & drop code image from phone/screen
                   </span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-mono font-semibold uppercase px-2.5 py-1 rounded-lg bg-[#181d2c] text-indigo-300 border border-white/5 shadow-inner">
-                  Upload Screenshot
+                  Upload Image
                 </span>
               </div>
             </div>
