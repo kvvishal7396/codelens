@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callGeminiWithRetry, cleanJsonResponse } from "@/lib/gemini";
+import { callGeminiWithRetry, cleanJsonResponse, formatGeminiErrorMessage } from "@/lib/gemini";
 
 export async function POST(req: NextRequest) {
   try {
@@ -124,9 +124,9 @@ Respond ONLY with a valid JSON object matching this schema without any markdown 
       });
     }
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
+    const friendlyMsg = formatGeminiErrorMessage(err);
     return NextResponse.json(
-      { error: `AI Assistant failed: ${msg}` },
+      { error: friendlyMsg },
       { status: 500 }
     );
   }
