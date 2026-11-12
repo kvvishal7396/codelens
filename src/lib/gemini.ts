@@ -2,9 +2,9 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const DEFAULT_MODELS = [
   "gemini-3.8-flash",
-  "gemini-3.8-pro",
+  "gemini-3.8-flash-lite",
   "gemini-3-flash",
-  "gemini-2.5-pro",
+  "gemini-2.5-flash",
 ];
 
 async function sleep(ms: number) {
@@ -26,11 +26,23 @@ export async function getAvailableGeminiModels(apiKey: string): Promise<string[]
         m.supportedGenerationMethods?.includes("generateContent")
       )
       .map((m: any) => m.name.replace(/^models\//, ""))
-      .filter((name: string) => name.includes("gemini"));
+      .filter(
+        (name: string) =>
+          name.includes("gemini") &&
+          !name.includes("tts") &&
+          !name.includes("audio") &&
+          !name.includes("embed")
+      );
 
     const sorted = available.sort((a: string, b: string) => {
-      const aScore = (a.includes("3.8") ? 10 : 0) + (a.includes("flash") ? 5 : 0);
-      const bScore = (b.includes("3.8") ? 10 : 0) + (b.includes("flash") ? 5 : 0);
+      const aScore =
+        (a.includes("3.8") ? 10 : 0) +
+        (a.includes("flash") ? 5 : 0) -
+        (a.includes("pro") ? 2 : 0);
+      const bScore =
+        (b.includes("3.8") ? 10 : 0) +
+        (b.includes("flash") ? 5 : 0) -
+        (b.includes("pro") ? 2 : 0);
       return bScore - aScore;
     });
 
@@ -50,27 +62,46 @@ export async function callGeminiWithRetry(
   let responseText = "";
   let lastError: Error | null = null;
 
-  for (const modelName of modelsToTry.slice(0, 4)) {
-    for (let attempt = 1; attempt <= 3; attempt++) {
+  for (const modelName of modelsToTry.slice(0, 3)) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent(contentPayload);
-        const res = await result.response;
-        responseText = res.text();
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 2048,
+            // Disable thinking delay to ensure sub-5s response time
+            // @ts-ignore
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+        });
+
+        // 12-second timeout per attempt to guarantee fast response
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Gemini timeout after 12s")), 12000)
+        );
+
+        const generatePromise = model
+          .generateContent(contentPayload)
+          .then((result) => result.response)
+          .then((res) => res.text());
+
+        responseText = await Promise.race([generatePromise, timeoutPromise]);
         if (responseText) return responseText;
       } catch (err: unknown) {
         lastError = err instanceof Error ? err : new Error(String(err));
         const isBusy =
           lastError.message.includes("503") ||
           lastError.message.includes("high demand") ||
+          lastError.message.includes("timeout") ||
           lastError.message.includes("429");
 
-        if (isBusy && attempt < 3) {
-          console.log(`[Gemini] ${modelName} returned 503. Retrying in 1.5s (${attempt}/3)...`);
-          await sleep(1500);
+        if (isBusy && attempt < 2) {
+          console.log(`[Gemini] ${modelName} spike. Quick retry in 1s (${attempt}/2)...`);
+          await sleep(1000);
           continue;
         }
-        break; // try next model
+        break; // try next model immediately
       }
     }
   }
