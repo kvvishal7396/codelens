@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const MODELS_TO_TRY = [
-  "gemini-3.8-flash",
-  "gemini-2.5-flash",
-  "gemini-1.5-flash",
-];
+import { callGeminiWithRetry, cleanJsonResponse } from "@/lib/gemini";
 
 export async function POST(req: NextRequest) {
   try {
@@ -42,7 +36,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
     let prompt = "";
 
     if (action === "fix-error") {
@@ -52,17 +45,16 @@ Here is source code written in ${language}:
 ${code}
 \`\`\`
 
-When executed, it produced the following runtime/compiler error:
+When executed in an isolated Linux sandbox environment, it produced the following runtime/compiler error:
 \`\`\`
 ${errorOutput || "Unknown execution error"}
 \`\`\`
 
-Your task:
-1. Identify the bug causing this error.
-2. Fix the code.
-3. Respond ONLY with a valid JSON object matching:
+Note: If the error mentions missing files/directories (like "cannot access 'workspace': No such file or directory"), fix the script by ensuring the necessary directories or files are created first (e.g. "mkdir -p workspace", "touch old_draft.txt") so the script runs without errors.
+
+Respond ONLY with a valid JSON object matching this schema without any markdown ticks:
 {
-  "fixedCode": "the complete corrected code string",
+  "fixedCode": "the complete corrected runnable code string",
   "explanation": "2-3 sentences explaining what caused the bug and how it was fixed"
 }`;
     } else if (action === "translate") {
@@ -72,7 +64,7 @@ Translate the following ${language} code into idiomatic, modern ${targetLanguage
 ${code}
 \`\`\`
 
-Respond ONLY with a valid JSON object matching:
+Respond ONLY with a valid JSON object matching this schema without any markdown ticks:
 {
   "translatedCode": "the full translated code in ${targetLanguage}",
   "explanation": "Brief note on language-specific differences or libraries used"
@@ -84,7 +76,7 @@ Explain the following ${language} code in concise, clear, and educational points
 ${code}
 \`\`\`
 
-Respond ONLY with a valid JSON object matching:
+Respond ONLY with a valid JSON object matching this schema without any markdown ticks:
 {
   "summary": "1 sentence high level overview",
   "steps": ["Step 1 explanation", "Step 2 explanation", "Step 3 explanation"],
@@ -98,34 +90,17 @@ Respond ONLY with a valid JSON object matching:
       );
     }
 
-    let responseText = "";
-    let lastErr: Error | null = null;
+    const responseText = await callGeminiWithRetry(apiKey, [prompt]);
 
-    for (const modelName of MODELS_TO_TRY) {
-      try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        responseText = response.text() || "";
-        if (responseText) break;
-      } catch (err: unknown) {
-        lastErr = err instanceof Error ? err : new Error(String(err));
-      }
+    try {
+      const parsed = cleanJsonResponse(responseText);
+      return NextResponse.json(parsed);
+    } catch {
+      return NextResponse.json({
+        fixedCode: code,
+        explanation: responseText,
+      });
     }
-
-    if (!responseText) {
-      throw lastErr || new Error("Failed to generate response from Gemini AI.");
-    }
-
-    let text = responseText.trim();
-    if (text.startsWith("```json")) {
-      text = text.replace(/^```json\s*/, "").replace(/\s*```$/, "");
-    } else if (text.startsWith("```")) {
-      text = text.replace(/^```\s*/, "").replace(/\s*```$/, "");
-    }
-
-    const parsed = JSON.parse(text);
-    return NextResponse.json(parsed);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
