@@ -1,11 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const MODELS_TO_TRY = [
+// Fallback priority list if dynamic model fetch fails
+const DEFAULT_MODELS = [
   "gemini-3.8-flash",
-  "gemini-2.5-flash",
-  "gemini-1.5-flash",
+  "gemini-3.8-flash-lite",
+  "gemini-3-flash",
+  "gemini-3.8-pro",
 ];
+
+async function getAvailableModels(apiKey: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) return DEFAULT_MODELS;
+    const data = await res.json();
+    if (!data.models || !Array.isArray(data.models)) return DEFAULT_MODELS;
+
+    const available = data.models
+      .filter((m: any) =>
+        m.supportedGenerationMethods?.includes("generateContent")
+      )
+      .map((m: any) => m.name.replace(/^models\//, ""))
+      .filter((name: string) => name.includes("gemini"));
+
+    // Prioritize 3.8 and flash models
+    const sorted = available.sort((a: string, b: string) => {
+      const aScore = (a.includes("3.8") ? 10 : 0) + (a.includes("flash") ? 5 : 0);
+      const bScore = (b.includes("3.8") ? 10 : 0) + (b.includes("flash") ? 5 : 0);
+      return bScore - aScore;
+    });
+
+    return sorted.length > 0 ? sorted : DEFAULT_MODELS;
+  } catch {
+    return DEFAULT_MODELS;
+  }
+}
+
+async function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -71,34 +107,54 @@ Return ONLY a valid JSON object matching this schema without any markdown backti
   "notes": "brief summary of what was extracted"
 }`;
 
+    // Get live available models for this specific API key
+    const modelsToTry = await getAvailableModels(apiKey);
     let responseText = "";
     let lastError: Error | null = null;
 
-    // Loop through model versions (starting with gemini-3.8-flash)
-    for (const modelName of MODELS_TO_TRY) {
-      try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent([
-          systemPrompt,
-          {
-            inlineData: {
-              mimeType: detectedMime,
-              data: base64Data,
+    // Loop through available models
+    for (const modelName of modelsToTry.slice(0, 4)) {
+      // Allow up to 2 attempts per model for temporary 503 high-demand errors
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const model = genAI.getGenerativeModel({ model: modelName });
+          const result = await model.generateContent([
+            systemPrompt,
+            {
+              inlineData: {
+                mimeType: detectedMime,
+                data: base64Data,
+              },
             },
-          },
-        ]);
-        const res = await result.response;
-        responseText = res.text();
-        if (responseText) {
-          break; // Successfully got content!
+          ]);
+          const res = await result.response;
+          responseText = res.text();
+          if (responseText) break;
+        } catch (err: unknown) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          const isOverloaded = lastError.message.includes("503") || lastError.message.includes("high demand") || lastError.message.includes("429");
+          if (isOverloaded && attempt === 0) {
+            // Wait 1.2s before retry
+            await sleep(1200);
+            continue;
+          }
+          break; // Try next model in list
         }
-      } catch (err: unknown) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        console.warn(`Model ${modelName} failed, trying next:`, lastError.message);
       }
+      if (responseText) break;
     }
 
     if (!responseText) {
+      const errMsg = lastError?.message || "Failed to extract code.";
+      if (errMsg.includes("503") || errMsg.includes("high demand")) {
+        return NextResponse.json(
+          {
+            error:
+              "Google Gemini servers are temporarily experiencing high demand (503). Please click Retry or try again in a few moments.",
+          },
+          { status: 503 }
+        );
+      }
       throw lastError || new Error("Failed to extract code using available Gemini models.");
     }
 
@@ -114,12 +170,15 @@ Return ONLY a valid JSON object matching this schema without any markdown backti
       const parsed = JSON.parse(cleaned);
       let extractedCode = parsed.code || "";
 
-      // Extra post-processing flaw fix: strip leading line numbers if any survived
-      // Regex matches lines starting with number + optional space (e.g., "1  def foo" -> "def foo")
+      // Post-processing flaw fix: strip leading line numbers if any survived
       const lines = extractedCode.split("\n");
-      const hasSystematicLineNumbers = lines.length > 2 && lines.filter((l: string) => /^\s*\d{1,4}\s+/.test(l)).length / lines.length > 0.6;
+      const hasSystematicLineNumbers =
+        lines.length > 2 &&
+        lines.filter((l: string) => /^\s*\d{1,4}\s+/.test(l)).length / lines.length > 0.6;
       if (hasSystematicLineNumbers) {
-        extractedCode = lines.map((l: string) => l.replace(/^\s*\d{1,4}\s+/, "")).join("\n");
+        extractedCode = lines
+          .map((l: string) => l.replace(/^\s*\d{1,4}\s+/, ""))
+          .join("\n");
       }
 
       return NextResponse.json({

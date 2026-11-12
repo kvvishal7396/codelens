@@ -26,8 +26,10 @@ export default function Home() {
   const [stdin, setStdin] = useState<string>("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  // Loading States
+  // Extraction & Execution States
   const [isExtracting, setIsExtracting] = useState<boolean>(false);
+  const [extractStatus, setExtractStatus] = useState<"idle" | "scanning" | "success" | "error">("idle");
+  const [lastExtractedTitle, setLastExtractedTitle] = useState<string>("");
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
 
@@ -146,16 +148,18 @@ export default function Home() {
 
     if (!key) {
       setIsSettingsOpen(true);
+      setExtractStatus("error");
       addToast(
         "Gemini API Key Needed",
-        "Please enter your free Google Gemini API key to scan screenshots.",
+        "Please enter your free Google Gemini API key in Settings to scan screenshots.",
         "warning"
       );
       return;
     }
 
     setIsExtracting(true);
-    addToast("Scanning Screenshot", "Gemini 3.8 Flash is extracting and cleaning code...", "info");
+    setExtractStatus("scanning");
+    addToast("Scanning Screenshot", "Gemini 3.8 Flash is analyzing code in image...", "info");
 
     try {
       const res = await fetch("/api/extract", {
@@ -171,21 +175,26 @@ export default function Home() {
       const data = await res.json();
 
       if (!res.ok) {
+        setExtractStatus("error");
         if (data.error === "MISSING_API_KEY") {
           setIsSettingsOpen(true);
           addToast("API Key Missing", data.message, "warning");
         } else {
-          addToast("Extraction Failed", data.error || "Could not read code from image.", "error");
+          addToast("Extraction Notice", data.error || "Could not read code. Click Retry.", "warning");
         }
         return;
       }
 
       if (data.code) {
         setCode(data.code);
+        setExtractStatus("success");
+        setLastExtractedTitle(data.title || "Extracted Snippet");
+
         if (data.language) {
           const matchedLang = findLanguageById(data.language);
           setCurrentLanguage(matchedLang);
         }
+
         saveRecentSnippet({
           title: data.title || "Extracted Snippet",
           language: data.language || currentLanguage.id,
@@ -194,7 +203,7 @@ export default function Home() {
 
         addToast(
           "Code Extracted Successfully!",
-          `Detected ${data.language?.toUpperCase() || "code"} • Indentations preserved`,
+          `Loaded into editor (${(data.language || "code").toUpperCase()}) • Indentations preserved`,
           "success"
         );
 
@@ -204,9 +213,13 @@ export default function Home() {
           origin: { y: 0.2 },
           colors: ["#a855f7", "#6366f1", "#10b981"],
         });
+      } else {
+        setExtractStatus("error");
+        addToast("Empty Code", "No code was detected in this image.", "warning");
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error extracting code";
+      setExtractStatus("error");
       addToast("Extraction Error", msg, "error");
     } finally {
       setIsExtracting(false);
@@ -220,6 +233,8 @@ export default function Home() {
     setCode(sample.code);
     setSelectedImage(null);
     setExecutionResult(null);
+    setExtractStatus("idle");
+    setLastExtractedTitle("");
     addToast("Preset Loaded", sample.title, "info");
   };
 
@@ -296,8 +311,19 @@ export default function Home() {
         onImageSelected={handleImageSelected}
         onSelectSample={handleSelectSample}
         isExtracting={isExtracting}
+        extractStatus={extractStatus}
         selectedImage={selectedImage}
-        onClearImage={() => setSelectedImage(null)}
+        onClearImage={() => {
+          setSelectedImage(null);
+          setExtractStatus("idle");
+          setLastExtractedTitle("");
+        }}
+        onRetryExtraction={() => {
+          if (selectedImage) {
+            handleImageSelected(selectedImage, "image/png");
+          }
+        }}
+        lastExtractedTitle={lastExtractedTitle}
       />
 
       {/* Main Workspace (Editor + Terminal Split) */}

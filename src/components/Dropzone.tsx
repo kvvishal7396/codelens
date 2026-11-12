@@ -9,6 +9,9 @@ import {
   Sparkles,
   Zap,
   Eye,
+  RotateCw,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { SAMPLE_SNIPPETS } from "@/lib/samples";
 import { SampleSnippet } from "@/types";
@@ -17,16 +20,22 @@ interface DropzoneProps {
   onImageSelected: (base64Image: string, mimeType: string) => void;
   onSelectSample: (sample: SampleSnippet) => void;
   isExtracting: boolean;
+  extractStatus: "idle" | "scanning" | "success" | "error";
   selectedImage: string | null;
   onClearImage: () => void;
+  onRetryExtraction?: () => void;
+  lastExtractedTitle?: string;
 }
 
 export function Dropzone({
   onImageSelected,
   onSelectSample,
   isExtracting,
+  extractStatus,
   selectedImage,
   onClearImage,
+  onRetryExtraction,
+  lastExtractedTitle,
 }: DropzoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -118,32 +127,56 @@ export function Dropzone({
                 <div className="min-w-0 pr-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-gray-100 truncate">
-                      Screenshot Attached
+                      {lastExtractedTitle || "Screenshot Attached"}
                     </span>
-                    {isExtracting ? (
+                    {extractStatus === "scanning" && (
                       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-500/20 text-[10px] text-indigo-300 font-semibold border border-indigo-500/30">
                         <Loader2 className="w-3 h-3 animate-spin text-indigo-400" />
                         Scanning with Gemini 3.8...
                       </span>
-                    ) : (
+                    )}
+                    {extractStatus === "success" && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-[10px] text-emerald-300 font-semibold border border-emerald-500/30">
-                        ✓ Ready
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        Loaded in Editor Below
+                      </span>
+                    )}
+                    {extractStatus === "error" && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/20 text-[10px] text-rose-300 font-semibold border border-rose-500/30">
+                        <AlertTriangle className="w-3 h-3 text-rose-400" />
+                        Extraction Failed
                       </span>
                     )}
                   </div>
                   <p className="text-[11px] text-gray-400 truncate mt-0.5">
-                    Click thumbnail to zoom original • Auto-extracted into editor
+                    {extractStatus === "success"
+                      ? "Code extracted & formatted into the editor • Edit and click Run"
+                      : extractStatus === "error"
+                      ? "Gemini servers were busy. Click Retry below to scan again"
+                      : "Analyzing screenshot pixels with Gemini Vision AI..."}
                   </p>
                 </div>
               </div>
 
-              <button
-                onClick={onClearImage}
-                title="Remove image"
-                className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 transition flex-shrink-0"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                {extractStatus === "error" && onRetryExtraction && (
+                  <button
+                    onClick={onRetryExtraction}
+                    title="Retry Extraction"
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold transition"
+                  >
+                    <RotateCw className="w-3 h-3" /> Retry
+                  </button>
+                )}
+
+                <button
+                  onClick={onClearImage}
+                  title="Remove image"
+                  className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 transition flex-shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ) : (
             <div
