@@ -19,12 +19,16 @@ import {
   getStoredApiKey,
   saveRecentSnippet,
 } from "@/lib/storage";
+import { performFreeBrowserOcr } from "@/lib/ocr";
 
 export default function Home() {
   const [currentLanguage, setCurrentLanguage] = useState<LanguageConfig>(DEFAULT_LANGUAGE);
   const [code, setCode] = useState<string>(DEFAULT_LANGUAGE.sampleCode);
   const [stdin, setStdin] = useState<string>("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  // Engine: "universal" (100% Free, 0 tokens, No API Key) vs "gemini" (AI Vision)
+  const [ocrEngine, setOcrEngine] = useState<"universal" | "gemini">("universal");
 
   // Extraction & Execution States
   const [isExtracting, setIsExtracting] = useState<boolean>(false);
@@ -144,21 +148,67 @@ export default function Home() {
   // Image Selected (via paste or upload)
   const handleImageSelected = async (base64Image: string, mimeType: string) => {
     setSelectedImage(base64Image);
-    const key = getStoredApiKey();
+    setIsExtracting(true);
+    setExtractStatus("scanning");
 
+    // MODE 1: Universal Free Browser OCR (100% Free, Zero Tokens, Unlimited for all)
+    if (ocrEngine === "universal") {
+      addToast("Universal Free OCR", "Extracting code in your browser (0 Tokens Used)...", "info");
+      try {
+        const result = await performFreeBrowserOcr(base64Image);
+
+        if (result.code.trim()) {
+          setCode(result.code);
+          setExtractStatus("success");
+          setLastExtractedTitle(result.title);
+          setCurrentLanguage(result.language);
+
+          saveRecentSnippet({
+            title: result.title,
+            language: result.language.id,
+            code: result.code,
+          });
+
+          addToast(
+            "Code Extracted Successfully!",
+            `Detected ${result.language.name} • 100% Free (0 Tokens)`,
+            "success"
+          );
+
+          confetti({
+            particleCount: 50,
+            spread: 70,
+            origin: { y: 0.2 },
+            colors: ["#10b981", "#6366f1", "#06b6d4"],
+          });
+        } else {
+          setExtractStatus("error");
+          addToast("Empty Code", "No readable code detected in image.", "warning");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "OCR failed";
+        setExtractStatus("error");
+        addToast("OCR Error", msg, "error");
+      } finally {
+        setIsExtracting(false);
+      }
+      return;
+    }
+
+    // MODE 2: Gemini AI Studio Mode (Free Tier with key)
+    const key = getStoredApiKey();
     if (!key) {
       setIsSettingsOpen(true);
       setExtractStatus("error");
+      setIsExtracting(false);
       addToast(
         "Gemini API Key Needed",
-        "Please enter your free Google Gemini API key in Settings to scan screenshots.",
+        "Switch to Universal Free OCR or enter your free Gemini key in Settings.",
         "warning"
       );
       return;
     }
 
-    setIsExtracting(true);
-    setExtractStatus("scanning");
     addToast("Scanning Screenshot", "Gemini 3.8 Flash is analyzing code in image...", "info");
 
     try {
@@ -203,7 +253,7 @@ export default function Home() {
 
         addToast(
           "Code Extracted Successfully!",
-          `Loaded into editor (${(data.language || "code").toUpperCase()}) • Indentations preserved`,
+          `Detected ${(data.language || "code").toUpperCase()} • Indentations preserved`,
           "success"
         );
 
@@ -246,7 +296,7 @@ export default function Home() {
     const key = getStoredApiKey();
     if (!key) {
       setIsSettingsOpen(true);
-      addToast("API Key Needed", "Please configure your Gemini key in Settings.", "warning");
+      addToast("API Key Needed", "Please configure your Gemini key in Settings for AI Magic.", "warning");
       return;
     }
 
@@ -324,6 +374,17 @@ export default function Home() {
           }
         }}
         lastExtractedTitle={lastExtractedTitle}
+        ocrEngine={ocrEngine}
+        onToggleEngine={(eng) => {
+          setOcrEngine(eng);
+          addToast(
+            eng === "universal" ? "Universal Free OCR Active" : "Gemini AI Mode Active",
+            eng === "universal"
+              ? "0 Tokens used • Unlimited client-side extraction"
+              : "Uses Google Gemini Vision AI",
+            "info"
+          );
+        }}
       />
 
       {/* Main Workspace (Editor + Terminal Split) */}
