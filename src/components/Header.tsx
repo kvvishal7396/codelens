@@ -23,6 +23,9 @@ interface HeaderProps {
   onOpenSettings: () => void;
   hasApiKey: boolean;
   onTriggerAiAction: (action: "explain" | "fix-error" | "translate") => void;
+  onDirectTranslate?: (targetLang: LanguageConfig) => void;
+  isConverting?: boolean;
+  convertingTargetLang?: string | null;
 }
 
 const LANGUAGE_DOT_COLORS: Record<string, string> = {
@@ -49,11 +52,16 @@ export function Header({
   onOpenSettings,
   hasApiKey,
   onTriggerAiAction,
+  onDirectTranslate,
+  isConverting,
+  convertingTargetLang,
 }: HeaderProps) {
   const [isLangOpen, setIsLangOpen] = useState(false);
   const [isAiMenuOpen, setIsAiMenuOpen] = useState(false);
+  const [isConvertOpen, setIsConvertOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);
   const aiRef = useRef<HTMLDivElement>(null);
+  const convertRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -62,6 +70,9 @@ export function Header({
       }
       if (aiRef.current && !aiRef.current.contains(e.target as Node)) {
         setIsAiMenuOpen(false);
+      }
+      if (convertRef.current && !convertRef.current.contains(e.target as Node)) {
+        setIsConvertOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -155,6 +166,72 @@ export function Header({
             </div>
           )}
         </div>
+
+        {/* Quick Language Interchange / Convert Button */}
+        {onDirectTranslate && (
+          <div className="relative" ref={convertRef}>
+            <button
+              onClick={() => setIsConvertOpen(!isConvertOpen)}
+              disabled={isConverting}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition shadow-sm ${
+                isConverting
+                  ? "bg-purple-900/30 border-purple-500/40 text-purple-300 shadow-purple-500/20 animate-pulse"
+                  : "bg-gradient-to-r from-purple-500/10 to-indigo-500/10 hover:from-purple-500/20 hover:to-indigo-500/20 border-purple-500/30 text-purple-200 hover:text-white"
+              }`}
+              title="Interchange / convert this code into another programming language"
+            >
+              {isConverting ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-purple-400/30 border-t-purple-400 rounded-full animate-spin" />
+                  <span className="hidden sm:inline">
+                    Converting to {convertingTargetLang || "Language"}...
+                  </span>
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Interchange</span>
+                  <ChevronDown className="w-3 h-3 text-purple-400/70" />
+                </>
+              )}
+            </button>
+
+            {isConvertOpen && (
+              <div className="absolute left-0 sm:right-0 mt-2 w-60 max-h-80 overflow-y-auto rounded-2xl bg-[#141826] border border-white/10 shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-2xl">
+                <div className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-white/5 mb-1 flex items-center justify-between">
+                  <span>Convert Code To</span>
+                  <span className="text-purple-400 font-mono">1-Click AI</span>
+                </div>
+                <div className="space-y-0.5">
+                  {SUPPORTED_LANGUAGES.filter((l) => l.id !== currentLanguage.id).map((lang) => (
+                    <button
+                      key={lang.id}
+                      onClick={() => {
+                        onDirectTranslate(lang);
+                        setIsConvertOpen(false);
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs text-gray-300 hover:bg-purple-500/20 hover:text-white transition group text-left"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            LANGUAGE_DOT_COLORS[lang.id] || "bg-gray-400"
+                          }`}
+                        />
+                        <span className="group-hover:translate-x-0.5 transition-transform font-medium">
+                          {lang.name}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-purple-400 opacity-80 uppercase font-mono tracking-wider group-hover:opacity-100">
+                        Convert →
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* AI Actions Dropdown */}
         <div className="relative" ref={aiRef}>

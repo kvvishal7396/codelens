@@ -33,6 +33,14 @@ export default function Home() {
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
 
+  // Language Conversion State
+  const [isConverting, setIsConverting] = useState<boolean>(false);
+  const [convertingTargetLang, setConvertingTargetLang] = useState<string | null>(null);
+  const [originalSnippet, setOriginalSnippet] = useState<{
+    code: string;
+    language: LanguageConfig;
+  } | null>(null);
+
   // Settings & Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [hasApiKey, setHasApiKey] = useState<boolean>(false);
@@ -187,25 +195,30 @@ export default function Home() {
       }
 
       if (data.code) {
+        const matchedLang = data.language
+          ? findLanguageById(data.language)
+          : currentLanguage;
+
         setCode(data.code);
+        setCurrentLanguage(matchedLang);
         setExtractStatus("success");
         setLastExtractedTitle(data.title || "Extracted Snippet");
 
-        if (data.language) {
-          const matchedLang = findLanguageById(data.language);
-          setCurrentLanguage(matchedLang);
-        }
+        setOriginalSnippet({
+          code: data.code,
+          language: matchedLang,
+        });
 
         saveRecentSnippet({
           title: data.title || "Extracted Snippet",
-          language: data.language || currentLanguage.id,
+          language: matchedLang.id,
           code: data.code,
         });
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         addToast(
           "Code Extracted Successfully!",
-          `Clean ${(data.language || "code").toUpperCase()} loaded into editor in ${elapsed}s • Indentations preserved`,
+          `Clean ${matchedLang.name.toUpperCase()} loaded into editor in ${elapsed}s • Indentations preserved`,
           "success"
         );
 
@@ -237,7 +250,114 @@ export default function Home() {
     setExecutionResult(null);
     setExtractStatus("idle");
     setLastExtractedTitle("");
+    setOriginalSnippet({
+      code: sample.code,
+      language: matched,
+    });
     addToast("Preset Loaded", sample.title, "info");
+  };
+
+  // 1-Click Language Interchange / Code Translation
+  const handleDirectTranslate = async (targetLang: LanguageConfig) => {
+    if (isConverting) return;
+    if (!code.trim()) {
+      addToast("No Code to Convert", "Please paste an image or enter code in the editor.", "warning");
+      return;
+    }
+    if (targetLang.id === currentLanguage.id) {
+      addToast("Already " + targetLang.name, `The current code is already ${targetLang.name}.`, "info");
+      return;
+    }
+
+    const key = getStoredApiKey();
+    if (!key) {
+      setIsSettingsOpen(true);
+      addToast(
+        "API Key Required",
+        "Please enter your free Gemini API key to convert code between languages.",
+        "warning"
+      );
+      return;
+    }
+
+    // Save initial snippet as original if not already recorded
+    if (!originalSnippet) {
+      setOriginalSnippet({
+        code,
+        language: currentLanguage,
+      });
+    }
+
+    const startTime = Date.now();
+    setIsConverting(true);
+    setConvertingTargetLang(targetLang.name);
+    addToast(
+      "Converting Code",
+      `Translating from ${currentLanguage.name} to ${targetLang.name} using Gemini AI...`,
+      "info"
+    );
+
+    try {
+      const res = await fetch("/api/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "translate",
+          code,
+          language: currentLanguage.name,
+          targetLanguage: targetLang.name,
+          apiKey: key,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        addToast("Conversion Failed", data.error || "Could not translate code.", "error");
+        return;
+      }
+
+      if (data.translatedCode) {
+        setCode(data.translatedCode);
+        setCurrentLanguage(targetLang);
+        setExecutionResult(null);
+
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        addToast(
+          `Converted to ${targetLang.name}!`,
+          `Code converted in ${duration}s • Ready to Run (⌘↵)`,
+          "success"
+        );
+
+        confetti({
+          particleCount: 50,
+          spread: 70,
+          origin: { y: 0.2 },
+          colors: ["#a855f7", "#3b82f6", "#10b981"],
+        });
+      } else {
+        addToast("Empty Translation", "AI did not return converted code.", "warning");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Error translating code";
+      addToast("Translation Error", msg, "error");
+    } finally {
+      setIsConverting(false);
+      setConvertingTargetLang(null);
+    }
+  };
+
+  // Revert back to original extracted snippet
+  const handleRevertOriginal = () => {
+    if (!originalSnippet) return;
+    setCode(originalSnippet.code);
+    setCurrentLanguage(originalSnippet.language);
+    setExecutionResult(null);
+    addToast(
+      "Restored Original",
+      `Switched back to original ${originalSnippet.language.name} code`,
+      "info"
+    );
   };
 
   // Trigger AI Action (Explain, Fix, Translate)
@@ -306,6 +426,9 @@ export default function Home() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         hasApiKey={hasApiKey}
         onTriggerAiAction={(action) => handleTriggerAiAction(action)}
+        onDirectTranslate={handleDirectTranslate}
+        isConverting={isConverting}
+        convertingTargetLang={convertingTargetLang}
       />
 
       {/* Image Upload / Paste / Sample Bar */}
@@ -337,6 +460,11 @@ export default function Home() {
             onChange={setCode}
             language={currentLanguage}
             onNotify={(title, msg, type) => addToast(title, msg, type)}
+            onDirectTranslate={handleDirectTranslate}
+            isConverting={isConverting}
+            convertingTargetLang={convertingTargetLang}
+            originalSnippet={originalSnippet}
+            onRevertOriginal={handleRevertOriginal}
           />
         </div>
 
