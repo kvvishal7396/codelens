@@ -1,11 +1,11 @@
 import { GoogleGenAI } from "@google/genai";
 
 const DEFAULT_MODELS = [
-  "gemini-2.5-flash-lite",
-  "gemini-3.5-flash-lite",
   "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-1.5-flash",
   "gemini-flash-latest",
-  "gemini-3.8-flash",
 ];
 
 async function sleep(ms: number) {
@@ -71,16 +71,16 @@ export async function getAvailableGeminiModels(apiKey: string): Promise<string[]
           !name.includes("robotics")
       );
 
-    // Prioritize high-quota flash-lite and stable 2.5/flash models
+    // Prioritize high-quota flash models and stable 2.5/2.0/1.5 models
     const sorted = available.sort((a: string, b: string) => {
       const getScore = (name: string) => {
         let score = 0;
-        if (name.includes("lite")) score += 60; // High-quota free tier
-        if (name.includes("2.5")) score += 50;
-        if (name.includes("3.5")) score += 45;
-        if (name.includes("3.8")) score += 30;
-        if (name.includes("flash")) score += 20;
-        if (name.includes("latest")) score += 15;
+        if (name.includes("2.5-flash")) score += 70;
+        if (name.includes("2.0-flash")) score += 60;
+        if (name.includes("1.5-flash")) score += 50;
+        if (name.includes("lite")) score += 40;
+        if (name.includes("flash")) score += 30;
+        if (name.includes("latest")) score += 20;
         if (name.includes("pro")) score -= 30;
         return score;
       };
