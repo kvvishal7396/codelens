@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export async function POST(req: NextRequest) {
   try {
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       base64Data = parts[1];
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const genAI = new GoogleGenerativeAI(apiKey);
 
     const systemPrompt = `You are CodeLens, an expert programming OCR and syntax reconstruction AI.
 Analyze the provided image which contains source code (a screenshot from an IDE, terminal, website, slide, or book).
@@ -54,49 +54,45 @@ Your tasks:
    - Distinguish correctly between quotes (use standard " or ' instead of curly/smart quotes).
    - Ensure closing braces, brackets, and semicolons are preserved.
    - Ignore line numbers, UI window borders, or watermarks.
-3. Identify the programming language accurately (e.g., "python", "cpp", "javascript", "typescript", "java", "go", "rust", "c", "ruby", "php", "swift", "kotlin").
+3. Identify the programming language accurately (e.g., "python", "cpp", "c", "bash", "javascript", "typescript", "java", "go", "rust", "ruby", "php", "swift", "kotlin").
 4. Provide a short 3-6 word title for what the code does.
 
-Return ONLY a valid JSON object matching this schema without any markdown formatting or ticks:
+Return ONLY a valid JSON object matching this schema without any markdown formatting or backticks:
 {
   "code": "string with escaped newlines",
-  "language": "one of: python | cpp | c | javascript | typescript | java | go | rust | ruby | php | swift | kotlin",
+  "language": "one of: python | cpp | c | bash | javascript | typescript | java | go | rust | ruby | php | swift | kotlin",
   "title": "short descriptive title",
   "notes": "brief 1-sentence note about what was extracted or corrected"
 }`;
 
-    // Call Gemini 2.5 Flash / 1.5 Flash
-    // We try gemini-2.5-flash first, and fallback to gemini-1.5-flash if needed
     let responseText = "";
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [
-          {
-            inlineData: {
-              mimeType: detectedMime,
-              data: base64Data,
-            },
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await model.generateContent([
+        systemPrompt,
+        {
+          inlineData: {
+            mimeType: detectedMime,
+            data: base64Data,
           },
-          systemPrompt,
-        ],
-      });
-      responseText = response.text || "";
+        },
+      ]);
+      const res = await result.response;
+      responseText = res.text();
     } catch {
-      // Fallback model
-      const fallbackResponse = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: [
-          {
-            inlineData: {
-              mimeType: detectedMime,
-              data: base64Data,
-            },
+      // Fallback to gemini-2.0-flash or gemini-1.5-pro
+      const fallbackModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const result = await fallbackModel.generateContent([
+        systemPrompt,
+        {
+          inlineData: {
+            mimeType: detectedMime,
+            data: base64Data,
           },
-          systemPrompt,
-        ],
-      });
-      responseText = fallbackResponse.text || "";
+        },
+      ]);
+      const res = await result.response;
+      responseText = res.text();
     }
 
     if (!responseText) {

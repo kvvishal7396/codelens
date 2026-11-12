@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     let prompt = "";
 
     if (action === "fix-error") {
@@ -92,12 +93,9 @@ Respond ONLY with a valid JSON object matching:
       );
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-    });
-
-    let text = response.text || "";
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    let text = response.text() || "";
     text = text.trim();
     if (text.startsWith("```json")) {
       text = text.replace(/^```json\s*/, "").replace(/\s*```$/, "");
