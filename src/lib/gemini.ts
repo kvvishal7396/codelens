@@ -1,10 +1,12 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
 const DEFAULT_MODELS = [
   "gemini-3.8-flash",
   "gemini-3.8-flash-lite",
   "gemini-3-flash",
+  "gemini-flash-latest",
   "gemini-2.5-flash",
+  "gemini-1.5-flash",
 ];
 
 async function sleep(ms: number) {
@@ -31,18 +33,27 @@ export async function getAvailableGeminiModels(apiKey: string): Promise<string[]
           name.includes("gemini") &&
           !name.includes("tts") &&
           !name.includes("audio") &&
-          !name.includes("embed")
+          !name.includes("embed") &&
+          !name.includes("imagen") &&
+          !name.includes("realtime") &&
+          !name.includes("robotics")
       );
 
     const sorted = available.sort((a: string, b: string) => {
       const aScore =
-        (a.includes("3.8") ? 10 : 0) +
-        (a.includes("flash") ? 5 : 0) -
-        (a.includes("pro") ? 2 : 0);
+        (a.includes("3.8") ? 100 : 0) +
+        (a.includes("3") ? 50 : 0) +
+        (a.includes("2.5") ? 30 : 0) +
+        (a.includes("flash") ? 20 : 0) +
+        (a.includes("lite") ? 10 : 0) -
+        (a.includes("pro") ? 15 : 0);
       const bScore =
-        (b.includes("3.8") ? 10 : 0) +
-        (b.includes("flash") ? 5 : 0) -
-        (b.includes("pro") ? 2 : 0);
+        (b.includes("3.8") ? 100 : 0) +
+        (b.includes("3") ? 50 : 0) +
+        (b.includes("2.5") ? 30 : 0) +
+        (b.includes("flash") ? 20 : 0) +
+        (b.includes("lite") ? 10 : 0) -
+        (b.includes("pro") ? 15 : 0);
       return bScore - aScore;
     });
 
@@ -56,49 +67,68 @@ export async function callGeminiWithRetry(
   apiKey: string,
   contentPayload: any[]
 ): Promise<string> {
-  const genAI = new GoogleGenerativeAI(apiKey);
+  const ai = new GoogleGenAI({ apiKey });
   const modelsToTry = await getAvailableGeminiModels(apiKey);
 
   let responseText = "";
   let lastError: Error | null = null;
 
-  for (const modelName of modelsToTry.slice(0, 3)) {
+  for (const modelName of modelsToTry.slice(0, 4)) {
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 2048,
-            // Disable thinking delay to ensure sub-5s response time
-            // @ts-ignore
-            thinkingConfig: { thinkingBudget: 0 },
-          },
-        });
-
-        // 12-second timeout per attempt to guarantee fast response
+        // 45-second timeout with Promise.race
         const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Gemini timeout after 12s")), 12000)
+          setTimeout(() => reject(new Error(`Timeout after 45s on ${modelName}`)), 45000)
         );
 
-        const generatePromise = model
-          .generateContent(contentPayload)
-          .then((result) => result.response)
-          .then((res) => res.text());
+        // Attempt 1: Fast inference with thinkingBudget: 0 to disable reasoning delay
+        const generatePromise = (async () => {
+          try {
+            const res = await ai.models.generateContent({
+              model: modelName,
+              contents: contentPayload,
+              config: {
+                temperature: 0.1,
+                maxOutputTokens: 2048,
+                thinkingConfig: {
+                  thinkingBudget: 0,
+                },
+              },
+            });
+            return res.text || "";
+          } catch (innerErr: any) {
+            const innerMsg = innerErr?.message || "";
+            // If model does not support thinkingConfig, immediately fallback without it
+            if (innerMsg.includes("thinkingConfig") || innerMsg.includes("INVALID_ARGUMENT")) {
+              const fallbackRes = await ai.models.generateContent({
+                model: modelName,
+                contents: contentPayload,
+                config: {
+                  temperature: 0.1,
+                  maxOutputTokens: 2048,
+                },
+              });
+              return fallbackRes.text || "";
+            }
+            throw innerErr;
+          }
+        })();
 
         responseText = await Promise.race([generatePromise, timeoutPromise]);
         if (responseText) return responseText;
       } catch (err: unknown) {
         lastError = err instanceof Error ? err : new Error(String(err));
+        const errMsg = lastError.message;
         const isBusy =
-          lastError.message.includes("503") ||
-          lastError.message.includes("high demand") ||
-          lastError.message.includes("timeout") ||
-          lastError.message.includes("429");
+          errMsg.includes("503") ||
+          errMsg.includes("high demand") ||
+          errMsg.includes("429") ||
+          errMsg.includes("fetch failed");
+
+        console.warn(`[Gemini] ${modelName} attempt ${attempt} warning: ${errMsg}`);
 
         if (isBusy && attempt < 2) {
-          console.log(`[Gemini] ${modelName} spike. Quick retry in 1s (${attempt}/2)...`);
-          await sleep(1000);
+          await sleep(1200);
           continue;
         }
         break; // try next model immediately
@@ -107,7 +137,7 @@ export async function callGeminiWithRetry(
   }
 
   if (!responseText) {
-    throw lastError || new Error("Failed to generate response from Gemini AI.");
+    throw lastError || new Error("Failed to generate response from Gemini AI. Please try again.");
   }
 
   return responseText;
@@ -115,10 +145,29 @@ export async function callGeminiWithRetry(
 
 export function cleanJsonResponse(rawText: string): any {
   let cleaned = rawText.trim();
-  if (cleaned.startsWith("```json")) {
-    cleaned = cleaned.replace(/^```json\s*/, "").replace(/\s*```$/, "");
-  } else if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace(/^```\s*/, "").replace(/\s*```$/, "");
+
+  // Try direct parse
+  try {
+    return JSON.parse(cleaned);
+  } catch {}
+
+  // Strip markdown code fences if wrapped in ```json ... ``` or ``` ... ```
+  const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (fenceMatch && fenceMatch[1]) {
+    try {
+      return JSON.parse(fenceMatch[1].trim());
+    } catch {}
   }
-  return JSON.parse(cleaned);
+
+  // Find outermost JSON object { ... }
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const jsonSub = cleaned.substring(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(jsonSub);
+    } catch {}
+  }
+
+  throw new Error("Could not parse JSON response from AI");
 }

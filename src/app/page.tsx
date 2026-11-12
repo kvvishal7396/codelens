@@ -157,6 +157,7 @@ export default function Home() {
       return;
     }
 
+    const startTime = Date.now();
     setIsExtracting(true);
     setExtractStatus("scanning");
     addToast("Scanning Screenshot", "Gemini Vision is analyzing code in image...", "info");
@@ -201,9 +202,10 @@ export default function Home() {
           code: data.code,
         });
 
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         addToast(
           "Code Extracted Successfully!",
-          `Clean ${(data.language || "code").toUpperCase()} loaded into editor • Indentations preserved`,
+          `Clean ${(data.language || "code").toUpperCase()} loaded into editor in ${elapsed}s • Indentations preserved`,
           "success"
         );
 

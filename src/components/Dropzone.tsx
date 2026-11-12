@@ -39,7 +39,23 @@ export function Dropzone({
 }: DropzoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [elapsedSec, setElapsedSec] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
+    if (isExtracting) {
+      setElapsedSec(0);
+      timer = setInterval(() => {
+        setElapsedSec((s) => s + 1);
+      }, 1000);
+    } else {
+      setElapsedSec(0);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isExtracting]);
 
   useEffect(() => {
     function handlePaste(e: ClipboardEvent) {
@@ -72,10 +88,10 @@ export function Dropzone({
       if (!rawDataUrl) return;
 
       // High-performance client-side image compression
-      // Reduces 15MB phone photos to ~250KB for sub-3-second AI extraction!
+      // Reduces 15MB phone photos to ~120KB for near-instant AI extraction!
       const img = new Image();
       img.onload = () => {
-        const maxDim = 1400;
+        const maxDim = 1200;
         let { width, height } = img;
         if (width > maxDim || height > maxDim) {
           if (width > height) {
@@ -94,7 +110,7 @@ export function Dropzone({
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = "high";
           ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL("image/jpeg", 0.88);
+          const compressed = canvas.toDataURL("image/jpeg", 0.85);
           onImageSelected(compressed, "image/jpeg");
         } else {
           onImageSelected(rawDataUrl, file.type);
@@ -164,7 +180,7 @@ export function Dropzone({
                     {extractStatus === "scanning" && (
                       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-500/20 text-[10px] text-indigo-300 font-semibold border border-indigo-500/30">
                         <Loader2 className="w-3 h-3 animate-spin text-indigo-400" />
-                        AI Vision Reconstructing Code...
+                        AI Reconstructing Code ({elapsedSec}s)...
                       </span>
                     )}
                     {extractStatus === "success" && (
@@ -185,7 +201,11 @@ export function Dropzone({
                       ? "Clean syntax reconstructed • Ready to edit and run"
                       : extractStatus === "error"
                       ? "Google AI was temporarily busy • Click the Retry button"
-                      : "Gemini Vision AI analyzing code pixels & removing screen glare..."}
+                      : elapsedSec < 3
+                      ? "Scanning code pixels & removing glare..."
+                      : elapsedSec < 7
+                      ? "Reconstructing indentations & language syntax..."
+                      : "Polishing code & finalizing output..."}
                   </p>
                 </div>
               </div>
