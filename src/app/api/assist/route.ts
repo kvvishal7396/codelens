@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+const MODELS_TO_TRY = [
+  "gemini-3.8-flash",
+  "gemini-2.5-flash",
+  "gemini-1.5-flash",
+];
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -37,7 +43,6 @@ export async function POST(req: NextRequest) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     let prompt = "";
 
     if (action === "fix-error") {
@@ -93,10 +98,26 @@ Respond ONLY with a valid JSON object matching:
       );
     }
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let text = response.text() || "";
-    text = text.trim();
+    let responseText = "";
+    let lastErr: Error | null = null;
+
+    for (const modelName of MODELS_TO_TRY) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        responseText = response.text() || "";
+        if (responseText) break;
+      } catch (err: unknown) {
+        lastErr = err instanceof Error ? err : new Error(String(err));
+      }
+    }
+
+    if (!responseText) {
+      throw lastErr || new Error("Failed to generate response from Gemini AI.");
+    }
+
+    let text = responseText.trim();
     if (text.startsWith("```json")) {
       text = text.replace(/^```json\s*/, "").replace(/\s*```$/, "");
     } else if (text.startsWith("```")) {

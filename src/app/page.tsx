@@ -8,6 +8,7 @@ import { CodeEditor } from "@/components/CodeEditor";
 import { Terminal } from "@/components/Terminal";
 import { SettingsModal } from "@/components/SettingsModal";
 import { AiActionModal } from "@/components/AiActionModal";
+import { ToastContainer, ToastMessage } from "@/components/Toast";
 import {
   DEFAULT_LANGUAGE,
   SUPPORTED_LANGUAGES,
@@ -33,6 +34,21 @@ export default function Home() {
   // Settings & Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [hasApiKey, setHasApiKey] = useState<boolean>(false);
+
+  // Toast System
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const addToast = useCallback(
+    (title: string, message?: string, type: ToastMessage["type"] = "info") => {
+      const id = Math.random().toString(36).substring(2, 9);
+      setToasts((prev) => [...prev, { id, title, message, type }]);
+    },
+    []
+  );
+
+  const dismissToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
 
   // AI Modal
   const [aiModal, setAiModal] = useState<{
@@ -74,13 +90,15 @@ export default function Home() {
       setExecutionResult(data);
 
       if (data.code === 0 && !data.stderr) {
-        // Trigger subtle confetti celebration on successful run
+        addToast("Execution Complete", `Ran in ${data.timeMs}ms with exit code 0`, "success");
         confetti({
-          particleCount: 30,
+          particleCount: 35,
           spread: 60,
           origin: { y: 0.8 },
           colors: ["#10b981", "#6366f1", "#3b82f6"],
         });
+      } else {
+        addToast("Execution Error", data.stderr || "Program exited with error", "error");
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Execution failed";
@@ -91,10 +109,11 @@ export default function Home() {
         code: 1,
         timeMs: 0,
       });
+      addToast("Network Error", msg, "error");
     } finally {
       setIsRunning(false);
     }
-  }, [isRunning, currentLanguage, code, stdin]);
+  }, [isRunning, currentLanguage, code, stdin, addToast]);
 
   // Global Keyboard Shortcuts (Cmd+Enter / Ctrl+Enter to Run)
   useEffect(() => {
@@ -111,13 +130,13 @@ export default function Home() {
   // Switch Language
   const handleLanguageChange = (newLang: LanguageConfig) => {
     setCurrentLanguage(newLang);
-    // If the editor has the old language's default sample code, switch to the new language's default
     const isOldSample = SUPPORTED_LANGUAGES.some(
       (l) => l.sampleCode.trim() === code.trim()
     );
     if (isOldSample) {
       setCode(newLang.sampleCode);
     }
+    addToast("Language Selected", `Switched to ${newLang.name}`, "info");
   };
 
   // Image Selected (via paste or upload)
@@ -127,10 +146,17 @@ export default function Home() {
 
     if (!key) {
       setIsSettingsOpen(true);
+      addToast(
+        "Gemini API Key Needed",
+        "Please enter your free Google Gemini API key to scan screenshots.",
+        "warning"
+      );
       return;
     }
 
     setIsExtracting(true);
+    addToast("Scanning Screenshot", "Gemini 3.8 Flash is extracting and cleaning code...", "info");
+
     try {
       const res = await fetch("/api/extract", {
         method: "POST",
@@ -147,8 +173,9 @@ export default function Home() {
       if (!res.ok) {
         if (data.error === "MISSING_API_KEY") {
           setIsSettingsOpen(true);
+          addToast("API Key Missing", data.message, "warning");
         } else {
-          alert(data.error || "Failed to extract code from screenshot.");
+          addToast("Extraction Failed", data.error || "Could not read code from image.", "error");
         }
         return;
       }
@@ -165,15 +192,22 @@ export default function Home() {
           code: data.code,
         });
 
+        addToast(
+          "Code Extracted Successfully!",
+          `Detected ${data.language?.toUpperCase() || "code"} • Indentations preserved`,
+          "success"
+        );
+
         confetti({
           particleCount: 50,
           spread: 70,
           origin: { y: 0.2 },
+          colors: ["#a855f7", "#6366f1", "#10b981"],
         });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error extracting code";
-      alert(msg);
+      addToast("Extraction Error", msg, "error");
     } finally {
       setIsExtracting(false);
     }
@@ -186,6 +220,7 @@ export default function Home() {
     setCode(sample.code);
     setSelectedImage(null);
     setExecutionResult(null);
+    addToast("Preset Loaded", sample.title, "info");
   };
 
   // Trigger AI Action (Explain, Fix, Translate)
@@ -196,6 +231,7 @@ export default function Home() {
     const key = getStoredApiKey();
     if (!key) {
       setIsSettingsOpen(true);
+      addToast("API Key Needed", "Please configure your Gemini key in Settings.", "warning");
       return;
     }
 
@@ -222,7 +258,7 @@ export default function Home() {
 
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "AI Action failed.");
+        addToast("AI Action Failed", data.error || "Could not complete action", "error");
         setAiModal((prev) => ({ ...prev, isOpen: false }));
         return;
       }
@@ -234,13 +270,16 @@ export default function Home() {
       }));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "AI Action failed";
-      alert(msg);
+      addToast("AI Action Error", msg, "error");
       setAiModal((prev) => ({ ...prev, isOpen: false }));
     }
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#090b10] text-gray-100 overflow-hidden font-sans">
+    <div className="flex flex-col h-screen w-screen bg-[#07090e] text-gray-100 overflow-hidden font-sans antialiased selection:bg-indigo-500/30 selection:text-indigo-200">
+      {/* Toast Notification Container */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
       {/* Top Header */}
       <Header
         currentLanguage={currentLanguage}
@@ -264,11 +303,12 @@ export default function Home() {
       {/* Main Workspace (Editor + Terminal Split) */}
       <main className="flex-1 grid grid-cols-1 lg:grid-cols-2 overflow-hidden">
         {/* Left Side: VS Code Monaco Editor */}
-        <div className="h-full min-h-[350px] overflow-hidden border-b lg:border-b-0 lg:border-r border-gray-800/80">
+        <div className="h-full min-h-[350px] overflow-hidden border-b lg:border-b-0 lg:border-r border-white/[0.08]">
           <CodeEditor
             code={code}
             onChange={setCode}
             language={currentLanguage}
+            onNotify={(title, msg, type) => addToast(title, msg, type)}
           />
         </div>
 
@@ -280,7 +320,10 @@ export default function Home() {
             stdin={stdin}
             onStdinChange={setStdin}
             onFixWithAi={() => handleTriggerAiAction("fix-error")}
-            onClear={() => setExecutionResult(null)}
+            onClear={() => {
+              setExecutionResult(null);
+              addToast("Terminal Cleared", undefined, "info");
+            }}
           />
         </div>
       </main>
@@ -289,7 +332,12 @@ export default function Home() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        onApiKeySaved={(key) => setHasApiKey(Boolean(key))}
+        onApiKeySaved={(key) => {
+          setHasApiKey(Boolean(key));
+          if (key) {
+            addToast("API Key Saved", "Gemini AI Vision is ready!", "success");
+          }
+        }}
       />
 
       {/* AI Action Modal (Fix, Explain, Translate) */}
@@ -305,6 +353,7 @@ export default function Home() {
           if (newLang) {
             setCurrentLanguage(newLang);
           }
+          addToast("Code Updated", "Applied changes to editor", "success");
         }}
         onTranslateRequest={(targetLang) =>
           handleTriggerAiAction("translate", targetLang)

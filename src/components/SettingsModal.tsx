@@ -63,7 +63,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeySaved }: SettingsModalP
         {/* Content */}
         <div className="p-6 space-y-4">
           <div className="p-3.5 rounded-xl bg-blue-950/30 border border-blue-500/20 text-xs text-blue-200/90 leading-relaxed">
-            <span className="font-semibold text-blue-400">Need a free key?</span> Gemini 1.5/2.5 Flash is 100% free with generous rate limits from Google AI Studio.
+            <span className="font-semibold text-blue-400">Need a free key?</span> Gemini 3.8 Flash is 100% free with generous rate limits from Google AI Studio.
             <a
               href="https://aistudio.google.com/app/apikey"
               target="_blank"
