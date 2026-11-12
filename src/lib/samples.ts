@@ -81,4 +81,25 @@ console.log("Median:", median);
 `,
     previewGradient: "from-amber-600 to-yellow-800",
   },
+  {
+    id: "bash-file-permissions",
+    title: "Bash File Script (From Screenshot)",
+    language: "bash",
+    description: "Linux file creation, editing, and permission handling",
+    code: `mkdir -p workspace
+cd workspace
+touch old_draft.txt
+chmod 777 old_draft.txt
+rm -f old_draft.txt
+touch final_draft.txt
+echo "Clean copy" > final_draft.txt
+chmod 640 final_draft.txt
+echo "Contents of final_draft.txt:"
+cat final_draft.txt
+echo "File permissions:"
+ls -l final_draft.txt
+cd ..
+`,
+    previewGradient: "from-emerald-600 to-teal-800",
+  },
 ];

@@ -199,6 +199,19 @@ print("Sorted numbers: \\(numbers.sorted())")
 }
 `,
   },
+  {
+    id: "bash",
+    name: "Bash (Shell)",
+    monacoLang: "shell",
+    judge0Id: 46, // Bash (5.0.0)
+    extension: "sh",
+    sampleCode: `echo "🐚 Bash executing in CodeLens!"
+mkdir -p workspace
+echo "Clean copy" > workspace/final_draft.txt
+cat workspace/final_draft.txt
+ls -la workspace
+`,
+  },
 ];
 
 export const DEFAULT_LANGUAGE = SUPPORTED_LANGUAGES[0]; // Python
