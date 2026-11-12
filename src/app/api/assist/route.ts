@@ -58,33 +58,37 @@ Respond ONLY with a valid JSON object matching this schema without any markdown 
   "explanation": "2-3 sentences explaining what caused the bug and how it was fixed"
 }`;
     } else if (action === "translate") {
-      prompt = `You are an expert multi-language software engineer and competitive programming specialist.
+      prompt = `You are an elite competitive programmer and multi-language compiler engineer.
 Translate the following ${language} code into clean, idiomatic, and 100% executable ${targetLanguage}:
 \`\`\`${language}
 ${code}
 \`\`\`
 
-CRITICAL EXECUTION & OUTPUT RULES:
-1. IDENTICAL OUTPUT GUARANTEE:
-   - The translated ${targetLanguage} code MUST produce the EXACT SAME runtime output as the original ${language} code when executed.
-   - If the original code calculates values, loops, or prints results, preserve the exact formatting, spacing, and output logic.
-2. SANDBOX-COMPATIBLE INPUT / OUTPUT:
+CRITICAL EXECUTION & OUTPUT INTEGRITY RULES:
+1. IDENTICAL OUTPUT & TEST-CASE FIDELITY:
+   - The translated ${targetLanguage} code MUST produce the EXACT SAME runtime output as the original ${language} code.
+   - If the source code processes T test cases and prints T lines of results, the translated code MUST print all T lines.
+2. STRICT LOOP & SCOPE INTEGRITY (DO NOT MOVE CODE OUTSIDE LOOPS):
+   - Pay meticulous attention to indentation levels in ${language}!
+   - If any calculation, function call, or print statement (print / println / console.log / cout) is indented inside a loop (e.g., 'for i in range(n):' or 'while'), it MUST remain INSIDE the corresponding loop body '{ ... }' in ${targetLanguage}.
+   - NEVER place the output statement after the loop closing brace '}'! Doing so overwrites results and only prints the last item.
+3. SANDBOX-COMPATIBLE INPUT / OUTPUT:
    - If the code reads standard input (stdin):
      * For JavaScript / TypeScript (Node.js):
-       DO NOT use asynchronous 'readline.question' (it can fail on non-interactive piped sandbox runners).
-       Use synchronous stdin reading with fallback:
+       DO NOT use asynchronous 'readline.question'. Use synchronous reading:
        \`\`\`javascript
        const fs = require('fs');
-       let input = '';
-       try { input = fs.readFileSync(0, 'utf-8').trim(); } catch (e) {}
+       const input = fs.readFileSync(0, 'utf-8').trim();
        \`\`\`
-       If input is empty, fallback to the default sample input (e.g. 10 or test case) so that clicking "Run" executes and produces output immediately!
-     * For C++: Use '#include <iostream>', 'std::cin', and 'std::cout'.
-     * For Java: Use a public class Main with 'Scanner scanner = new Scanner(System.in);'.
-     * For Python: Use 'input()' or 'sys.stdin.read()'.
-     * For Go: Use 'package main', 'import ("fmt", "os")'.
-3. SELF-CONTAINED & RUNNABLE:
-   - Include all necessary imports, headers, and main execution entry points so the code compiles and runs in an isolated Linux sandbox without errors.
+       Split input by lines or whitespace and process each test case.
+     * For Rust:
+       Use 'use std::io::{self, BufRead};'. Read from 'io::stdin().lock().lines()'. Keep processing and 'println!(...)' inside the test-case loop!
+     * For C++: Use '#include <iostream>', '#include <string>', '#include <algorithm>'. Use 'cin' and 'cout << ... << "\\n";'.
+     * For Java: Use 'public class Main' with 'Scanner sc = new Scanner(System.in);'.
+     * For Go: Use 'package main', 'import ("bufio", "fmt", "os")'.
+     * For Python: Use standard 'input()' or 'sys.stdin.read().split()'.
+4. COMPLETE & FULLY RUNNABLE:
+   - Output 100% self-contained code with all necessary imports, modules, helper functions, and the main entry point.
 
 Respond ONLY with a valid JSON object matching this schema without any markdown ticks:
 {
