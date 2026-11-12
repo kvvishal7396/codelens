@@ -42,18 +42,22 @@ export async function getAvailableGeminiModels(apiKey: string): Promise<string[]
     const sorted = available.sort((a: string, b: string) => {
       const aScore =
         (a.includes("3.8") ? 100 : 0) +
-        (a.includes("3") ? 50 : 0) +
+        (a.includes("flash") ? 40 : 0) +
         (a.includes("2.5") ? 30 : 0) +
-        (a.includes("flash") ? 20 : 0) +
-        (a.includes("lite") ? 10 : 0) -
-        (a.includes("pro") ? 15 : 0);
+        (a.includes("2.0") ? 25 : 0) +
+        (a.includes("latest") ? 20 : 0) +
+        (a.includes("1.5") ? 15 : 0) -
+        (a.includes("preview") ? 60 : 0) -
+        (a.includes("pro") ? 20 : 0);
       const bScore =
         (b.includes("3.8") ? 100 : 0) +
-        (b.includes("3") ? 50 : 0) +
+        (b.includes("flash") ? 40 : 0) +
         (b.includes("2.5") ? 30 : 0) +
-        (b.includes("flash") ? 20 : 0) +
-        (b.includes("lite") ? 10 : 0) -
-        (b.includes("pro") ? 15 : 0);
+        (b.includes("2.0") ? 25 : 0) +
+        (b.includes("latest") ? 20 : 0) +
+        (b.includes("1.5") ? 15 : 0) -
+        (b.includes("preview") ? 60 : 0) -
+        (b.includes("pro") ? 20 : 0);
       return bScore - aScore;
     });
 
@@ -67,7 +71,7 @@ export async function callGeminiWithRetry(
   apiKey: string,
   contentPayload: any[]
 ): Promise<string> {
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey, apiVersion: "v1beta" });
   const modelsToTry = await getAvailableGeminiModels(apiKey);
 
   let responseText = "";

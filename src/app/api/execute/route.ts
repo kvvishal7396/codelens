@@ -21,6 +21,12 @@ export async function POST(req: NextRequest) {
 
     const startTime = Date.now();
 
+    // Ensure stdin has a trailing newline so line-based input readers (Node.js readline, C++ cin, C fgets, Bash read) never block or discard input on EOF
+    let cleanStdin: string | undefined = undefined;
+    if (typeof stdin === "string" && stdin.trim().length > 0) {
+      cleanStdin = stdin.endsWith("\n") ? stdin : stdin + "\n";
+    }
+
     // Call Judge0 CE public engine
     const response = await fetch(
       "https://ce.judge0.com/submissions?base64_encoded=false&wait=true",
@@ -32,7 +38,7 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           language_id: languageId,
           source_code: code,
-          stdin: stdin || undefined,
+          stdin: cleanStdin,
         }),
       }
     );

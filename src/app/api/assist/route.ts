@@ -58,15 +58,37 @@ Respond ONLY with a valid JSON object matching this schema without any markdown 
   "explanation": "2-3 sentences explaining what caused the bug and how it was fixed"
 }`;
     } else if (action === "translate") {
-      prompt = `You are a multi-language programming translator.
-Translate the following ${language} code into idiomatic, modern ${targetLanguage}:
+      prompt = `You are an expert multi-language software engineer and competitive programming specialist.
+Translate the following ${language} code into clean, idiomatic, and 100% executable ${targetLanguage}:
 \`\`\`${language}
 ${code}
 \`\`\`
 
+CRITICAL EXECUTION & OUTPUT RULES:
+1. IDENTICAL OUTPUT GUARANTEE:
+   - The translated ${targetLanguage} code MUST produce the EXACT SAME runtime output as the original ${language} code when executed.
+   - If the original code calculates values, loops, or prints results, preserve the exact formatting, spacing, and output logic.
+2. SANDBOX-COMPATIBLE INPUT / OUTPUT:
+   - If the code reads standard input (stdin):
+     * For JavaScript / TypeScript (Node.js):
+       DO NOT use asynchronous 'readline.question' (it can fail on non-interactive piped sandbox runners).
+       Use synchronous stdin reading with fallback:
+       \`\`\`javascript
+       const fs = require('fs');
+       let input = '';
+       try { input = fs.readFileSync(0, 'utf-8').trim(); } catch (e) {}
+       \`\`\`
+       If input is empty, fallback to the default sample input (e.g. 10 or test case) so that clicking "Run" executes and produces output immediately!
+     * For C++: Use '#include <iostream>', 'std::cin', and 'std::cout'.
+     * For Java: Use a public class Main with 'Scanner scanner = new Scanner(System.in);'.
+     * For Python: Use 'input()' or 'sys.stdin.read()'.
+     * For Go: Use 'package main', 'import ("fmt", "os")'.
+3. SELF-CONTAINED & RUNNABLE:
+   - Include all necessary imports, headers, and main execution entry points so the code compiles and runs in an isolated Linux sandbox without errors.
+
 Respond ONLY with a valid JSON object matching this schema without any markdown ticks:
 {
-  "translatedCode": "the full translated code in ${targetLanguage}",
+  "translatedCode": "the complete executable ${targetLanguage} code",
   "explanation": "Brief note on language-specific differences or libraries used"
 }`;
     } else if (action === "explain") {
