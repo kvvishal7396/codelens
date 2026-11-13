@@ -100,7 +100,11 @@ export default function Home() {
       setExecutionResult(data);
 
       if (data.code === 0 && !data.stderr) {
-        addToast("Execution Complete", `Ran in ${data.timeMs}ms with exit code 0`, "success");
+        if (data.autoSuppliedStdin) {
+          addToast("Input Auto-Supplied", "Code needed input; safe sample values were provided so it ran smoothly.", "info");
+        } else {
+          addToast("Execution Complete", `Ran in ${data.timeMs}ms with exit code 0`, "success");
+        }
         confetti({
           particleCount: 35,
           spread: 60,

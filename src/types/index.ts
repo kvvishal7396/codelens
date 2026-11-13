@@ -14,6 +14,10 @@ export interface ExecutionResult {
   code: number;
   timeMs: number;
   error?: string;
+  statusDescription?: string;
+  memoryKb?: number;
+  requiresInput?: boolean;
+  autoSuppliedStdin?: boolean;
 }
 
 export interface ExtractionResult {
