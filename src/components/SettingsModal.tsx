@@ -62,26 +62,26 @@ export function SettingsModal({ isOpen, onClose, onApiKeySaved }: SettingsModalP
 
         {/* Content */}
         <div className="p-6 space-y-4">
-          <div className="p-3.5 rounded-xl bg-blue-950/30 border border-blue-500/20 text-xs text-blue-200/90 leading-relaxed">
-            <span className="font-semibold text-blue-400">100% Free for Students:</span> Google AI Studio grants <strong>1,500 free requests/day</strong> for every free key (no credit card needed).
-            <div className="mt-2">
+          <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/20 text-xs text-emerald-200/90 leading-relaxed">
+            <span className="font-semibold text-emerald-400">✨ Zero Setup Required:</span> CodeLens is completely free out of the box with shared server access. You can compile, run, and extract code without entering any key!
+            <div className="mt-2 text-gray-300">
+              Entering a personal Gemini key below is <strong>100% optional</strong> if you want your own dedicated <strong>1,500 requests/day</strong> quota from Google AI Studio.
+            </div>
+            <div className="mt-2.5">
               <a
                 href="https://aistudio.google.com/app/apikey"
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 font-semibold text-indigo-400 hover:text-indigo-300 underline"
               >
-                Get Free Gemini API Key <ExternalLink className="w-3.5 h-3.5" />
+                Get Optional Free Gemini Key <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
-            <p className="mt-2 text-[11px] text-blue-300/80">
-              💡 <strong>Pro Tip:</strong> You can paste multiple free keys separated by commas (e.g., <code>key1, key2</code>) to pool 3,000+ free requests every day!
-            </p>
           </div>
 
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-gray-300">
-              Gemini API Key(s) <span className="text-gray-500 font-normal">(separate multiple keys with commas)</span>
+              Personal Gemini API Key <span className="text-gray-500 font-normal">(Optional)</span>
             </label>
             <textarea
               rows={2}

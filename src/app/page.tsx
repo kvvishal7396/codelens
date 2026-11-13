@@ -154,17 +154,6 @@ export default function Home() {
     setSelectedImage(base64Image);
     const key = getStoredApiKey();
 
-    if (!key) {
-      setIsSettingsOpen(true);
-      setExtractStatus("error");
-      addToast(
-        "Gemini API Key Needed",
-        "Please paste your free Gemini API key in Settings (1,500 free requests/day).",
-        "warning"
-      );
-      return;
-    }
-
     const startTime = Date.now();
     setIsExtracting(true);
     setExtractStatus("scanning");
@@ -270,15 +259,6 @@ export default function Home() {
     }
 
     const key = getStoredApiKey();
-    if (!key) {
-      setIsSettingsOpen(true);
-      addToast(
-        "API Key Required",
-        "Please enter your free Gemini API key to convert code between languages.",
-        "warning"
-      );
-      return;
-    }
 
     // Save initial snippet as original if not already recorded
     if (!originalSnippet) {
@@ -313,7 +293,12 @@ export default function Home() {
       const data = await res.json();
 
       if (!res.ok) {
-        addToast("Conversion Failed", data.error || "Could not translate code.", "error");
+        if (data.error === "MISSING_API_KEY") {
+          setIsSettingsOpen(true);
+          addToast("API Key Setup", data.message, "warning");
+        } else {
+          addToast("Conversion Failed", data.error || "Could not translate code.", "error");
+        }
         return;
       }
 
@@ -366,11 +351,6 @@ export default function Home() {
     targetLang?: string
   ) => {
     const key = getStoredApiKey();
-    if (!key) {
-      setIsSettingsOpen(true);
-      addToast("API Key Needed", "Please configure your Gemini key in Settings for AI Magic.", "warning");
-      return;
-    }
 
     setAiModal({
       isOpen: true,

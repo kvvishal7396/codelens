@@ -8,18 +8,59 @@ const DEFAULT_MODELS = [
   "gemini-flash-latest",
 ];
 
-async function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+import crypto from "crypto";
+
+// In-Memory SHA-256 Cache for instant 0ms duplicate responses & 0 token burn
+const responseCache = new Map<string, { data: string; timestamp: number }>();
+const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24 hours
+const MAX_CACHE_ENTRIES = 500;
+
+export function getCacheKey(prefix: string, content: string): string {
+  return `${prefix}_${crypto.createHash("sha256").update(content).digest("hex")}`;
 }
 
+export function getCachedResponse(key: string): string | null {
+  const item = responseCache.get(key);
+  if (!item) return null;
+  if (Date.now() - item.timestamp > CACHE_TTL_MS) {
+    responseCache.delete(key);
+    return null;
+  }
+  return item.data;
+}
+
+export function setCachedResponse(key: string, data: string): void {
+  if (responseCache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = responseCache.keys().next().value;
+    if (oldestKey) responseCache.delete(oldestKey);
+  }
+  responseCache.set(key, { data, timestamp: Date.now() });
+}
+
+let serverKeyRotationIndex = 0;
+
 export function parseApiKeys(apiKeyInput?: string): string[] {
-  const envKeys = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.split(/[\s,;]+/) : [];
-  const userKeys = apiKeyInput ? apiKeyInput.split(/[\s,;]+/) : [];
-  const combined = [...userKeys, ...envKeys]
-    .map((k) => k.trim())
-    .filter((k) => k.length > 10);
-  // Deduplicate keys
-  return Array.from(new Set(combined));
+  const rawEnv = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || "";
+  const envKeys = rawEnv.split(/[\s,;]+/).map((k) => k.trim()).filter((k) => k.length > 10);
+  const userKeys = apiKeyInput ? apiKeyInput.split(/[\s,;]+/).map((k) => k.trim()).filter((k) => k.length > 10) : [];
+
+  // If user provided a personal key, prioritize it
+  if (userKeys.length > 0) {
+    return Array.from(new Set([...userKeys, ...envKeys]));
+  }
+
+  // If using shared server keys, rotate across keys round-robin so concurrent students don't hit the same key
+  if (envKeys.length > 1) {
+    const rotated: string[] = [];
+    const startIndex = serverKeyRotationIndex % envKeys.length;
+    serverKeyRotationIndex = (serverKeyRotationIndex + 1) % envKeys.length;
+    for (let i = 0; i < envKeys.length; i++) {
+      rotated.push(envKeys[(startIndex + i) % envKeys.length]);
+    }
+    return Array.from(new Set(rotated));
+  }
+
+  return envKeys;
 }
 
 export function formatGeminiErrorMessage(err: unknown): string {
@@ -30,7 +71,7 @@ export function formatGeminiErrorMessage(err: unknown): string {
     msg.includes("RESOURCE_EXHAUSTED") ||
     msg.includes("free_tier_requests")
   ) {
-    return "Daily free Gemini quota limit reached. You can add another free API key in Settings (each key provides 1,500 requests/day), or switch to free offline OCR!";
+    return "All server AI keys are currently under heavy student traffic. Please retry in a few seconds, or switch to offline OCR!";
   }
   if (msg.includes("503") || msg.includes("high demand") || msg.includes("UNAVAILABLE")) {
     return "Google AI servers are currently experiencing a brief traffic spike. Please click Retry in a few seconds.";
@@ -93,13 +134,17 @@ export async function getAvailableGeminiModels(apiKey: string): Promise<string[]
   }
 }
 
+async function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function callGeminiWithRetry(
   apiKeyInput: string,
   contentPayload: any[]
 ): Promise<string> {
   const keys = parseApiKeys(apiKeyInput);
   if (keys.length === 0) {
-    throw new Error("A free Gemini API Key is required. Click Settings to enter your key.");
+    throw new Error("No Gemini API key available on server or client. Please configure a key in Settings or server environment.");
   }
 
   let responseText = "";

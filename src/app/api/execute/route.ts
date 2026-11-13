@@ -27,9 +27,13 @@ export async function POST(req: NextRequest) {
       cleanStdin = stdin.endsWith("\n") ? stdin : stdin + "\n";
     }
 
-    // Call Judge0 CE public engine
+    // Call Judge0 CE public engine with timeout protection
+    const judge0Base = process.env.JUDGE0_URL || "https://ce.judge0.com";
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
     const response = await fetch(
-      "https://ce.judge0.com/submissions?base64_encoded=false&wait=true",
+      `${judge0Base}/submissions?base64_encoded=false&wait=true`,
       {
         method: "POST",
         headers: {
@@ -40,8 +44,10 @@ export async function POST(req: NextRequest) {
           source_code: code,
           stdin: cleanStdin,
         }),
+        signal: controller.signal,
       }
     );
+    clearTimeout(timeoutId);
 
     const elapsedMs = Date.now() - startTime;
 

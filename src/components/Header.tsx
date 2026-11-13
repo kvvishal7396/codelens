@@ -105,6 +105,10 @@ export function Header({
             <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-gradient-to-r from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 text-indigo-300 shadow-sm shadow-indigo-500/10">
               AI Vision
             </span>
+            <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-medium text-emerald-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              100% Free
+            </span>
           </div>
           <p className="text-[11px] text-gray-400 hidden md:block tracking-wide">
             Turn screenshots into runnable code in seconds
@@ -348,7 +352,7 @@ export function Header({
             className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${
               hasApiKey
                 ? "bg-emerald-400 shadow-sm shadow-emerald-400"
-                : "bg-amber-400 animate-pulse"
+                : "bg-emerald-500/40"
             }`}
           />
         </button>

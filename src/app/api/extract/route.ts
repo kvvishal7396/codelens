@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callGeminiWithRetry, cleanJsonResponse, formatGeminiErrorMessage } from "@/lib/gemini";
+import {
+  callGeminiWithRetry,
+  cleanJsonResponse,
+  formatGeminiErrorMessage,
+  getCacheKey,
+  getCachedResponse,
+  setCachedResponse,
+} from "@/lib/gemini";
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,6 +23,7 @@ export async function POST(req: NextRequest) {
     const apiKey =
       userApiKey?.trim() ||
       req.headers.get("x-gemini-key")?.trim() ||
+      process.env.GEMINI_API_KEYS?.trim() ||
       process.env.GEMINI_API_KEY?.trim();
 
     if (!apiKey) {
@@ -23,7 +31,7 @@ export async function POST(req: NextRequest) {
         {
           error: "MISSING_API_KEY",
           message:
-            "A free Gemini API Key is required. Click Settings to enter your free key from Google AI Studio (1,500 free requests/day).",
+            "No API key configured on server. Please configure GEMINI_API_KEY on the server or enter a free key in Settings.",
         },
         { status: 401 }
       );
@@ -39,6 +47,21 @@ export async function POST(req: NextRequest) {
         detectedMime = mimeMatch[1];
       }
       base64Data = parts[1];
+    }
+
+    // Check SHA-256 In-Memory Cache (Instant 0ms hit for duplicate screenshots)
+    const cacheKey = getCacheKey("extract", base64Data);
+    const cachedResponse = getCachedResponse(cacheKey);
+    if (cachedResponse) {
+      try {
+        const cachedParsed = cleanJsonResponse(cachedResponse);
+        return NextResponse.json({
+          code: cachedParsed.code,
+          language: (cachedParsed.language || "python").toLowerCase().trim(),
+          title: cachedParsed.title || "Extracted Code",
+          cached: true,
+        });
+      } catch {}
     }
 
     const systemPrompt = `You are CodeLens, an elite computer vision programming OCR and code reconstruction engine.
@@ -72,6 +95,7 @@ Return ONLY a valid JSON object matching this schema without any markdown ticks:
     ];
 
     const responseText = await callGeminiWithRetry(apiKey, contentPayload);
+    setCachedResponse(cacheKey, responseText);
 
     try {
       const parsed = cleanJsonResponse(responseText);

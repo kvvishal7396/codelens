@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callGeminiWithRetry, cleanJsonResponse, formatGeminiErrorMessage } from "@/lib/gemini";
+import {
+  callGeminiWithRetry,
+  cleanJsonResponse,
+  formatGeminiErrorMessage,
+  getCacheKey,
+  getCachedResponse,
+  setCachedResponse,
+} from "@/lib/gemini";
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,6 +23,7 @@ export async function POST(req: NextRequest) {
     const apiKey =
       userApiKey?.trim() ||
       req.headers.get("x-gemini-key")?.trim() ||
+      process.env.GEMINI_API_KEYS?.trim() ||
       process.env.GEMINI_API_KEY?.trim();
 
     if (!apiKey) {
@@ -23,7 +31,7 @@ export async function POST(req: NextRequest) {
         {
           error: "MISSING_API_KEY",
           message:
-            "A Gemini API Key is required for AI actions. Click Settings to enter your free key.",
+            "No API key configured on server. Please configure GEMINI_API_KEY on the server or enter a free key in Settings.",
         },
         { status: 401 }
       );
@@ -34,6 +42,19 @@ export async function POST(req: NextRequest) {
         { error: "Code content is required." },
         { status: 400 }
       );
+    }
+
+    // In-Memory SHA-256 Cache Check (Instant 0ms translation / explanation)
+    const cacheKey = getCacheKey(
+      "assist",
+      `${action}_${language}_${targetLanguage || ""}_${code.trim()}`
+    );
+    const cached = getCachedResponse(cacheKey);
+    if (cached) {
+      try {
+        const parsedCached = cleanJsonResponse(cached);
+        return NextResponse.json({ ...parsedCached, cached: true });
+      } catch {}
     }
 
     let prompt = "";
@@ -117,6 +138,7 @@ Respond ONLY with a valid JSON object matching this schema without any markdown 
     }
 
     const responseText = await callGeminiWithRetry(apiKey, [prompt]);
+    setCachedResponse(cacheKey, responseText);
 
     try {
       const parsed = cleanJsonResponse(responseText);
